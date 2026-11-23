@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1420">
-<title>OLED 눈 리모컨</title>
+<title>OLED 로봇 리모컨</title>
 <link rel="manifest" href="manifest.json">
 <style>
   :root {
@@ -15,24 +15,34 @@
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
-    padding: env(safe-area-inset-top) 0 calc(80px + env(safe-area-inset-bottom));
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
   }
   header {
-    position: sticky; top: 0; z-index: 5; background: rgba(15,20,32,.92); backdrop-filter: blur(8px);
-    display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 5; background: rgba(15,20,32,.95); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top);
   }
-  header h1 { font-size: 17px; margin: 0; flex: 1; }
+  .bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px 6px; }
+  .bar h1 { font-size: 17px; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; }
   .dot.on { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+  .modes { display: flex; gap: 6px; overflow-x: auto; padding: 4px 16px 10px; scrollbar-width: none; }
+  .modes::-webkit-scrollbar { display: none; }
+  .modes .lbl { flex: none; align-self: center; font-size: 12px; color: var(--muted); margin-right: 2px; }
+  .chip {
+    flex: none; min-height: 36px; padding: 6px 12px; border-radius: 999px; font-size: 13px;
+    background: #1b2436; border: 1px solid var(--line); color: var(--text);
+  }
+  .chip.on { background: var(--accent); color: #04121f; border-color: var(--accent); font-weight: 700; }
+  .chip.cyc { outline: 2px dashed var(--accent2); outline-offset: 1px; }
   main { max-width: 560px; margin: 0 auto; padding: 12px 16px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
   .card h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
   .card h2 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: auto; }
   button {
     font: inherit; color: var(--text); background: #222c44; border: 1px solid var(--line);
-    border-radius: 12px; padding: 12px 10px; cursor: pointer; min-height: 46px;
+    border-radius: 12px; padding: 10px; cursor: pointer; min-height: 44px;
   }
-  button:active { transform: scale(.97); background: #2b3756; }
+  button:active { transform: scale(.97); }
   button.primary { background: var(--accent); color: #04121f; border: none; font-weight: 700; }
   button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
   button.sel { outline: 2px solid var(--accent); background: #1f3350; }
@@ -40,91 +50,110 @@
   .g2 { grid-template-columns: repeat(2, 1fr); }
   .g3 { grid-template-columns: repeat(3, 1fr); }
   .g4 { grid-template-columns: repeat(4, 1fr); }
-  .mood { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; padding: 8px 4px; }
-  .mood span { font-size: 24px; }
   .row { display: flex; gap: 8px; align-items: center; }
-  .row > * { flex: 1; }
-  input[type=text], input[type=number] {
+  .row > * { flex: 1; min-width: 0; }
+  input[type=text], input[type=number], input[type=date], select {
     width: 100%; font: inherit; color: var(--text); background: #0f1626; border: 1px solid var(--line);
-    border-radius: 12px; padding: 12px; min-height: 46px;
+    border-radius: 12px; padding: 10px 12px; min-height: 44px; color-scheme: dark;
   }
   input[type=range] { width: 100%; accent-color: var(--accent); }
-  .big { font-size: 44px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: 1px; margin: 4px 0 12px; }
-  .muted { color: var(--muted); font-size: 13px; }
+  .switch { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; gap: 12px; }
+  .switch input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+  .muted { color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .big { font-size: 44px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; margin: 4px 0 12px; }
+
+  /* OLED 미리보기 */
+  .oled { width: 100%; aspect-ratio: 2 / 1; background: #000; border-radius: 10px; image-rendering: pixelated; display: block; }
+  .oled-wrap { background: #05070c; border: 6px solid #2a3348; border-radius: 16px; padding: 6px; margin-bottom: 12px; }
+  .thumb { display: flex; flex-direction: column; gap: 4px; align-items: stretch; padding: 6px; font-size: 12px; }
+  .thumb img { width: 100%; aspect-ratio: 2 / 1; background: #000; border-radius: 6px; image-rendering: pixelated; }
+
   #pad {
     position: relative; width: 100%; aspect-ratio: 2 / 1; background: #0f1626; border: 1px solid var(--line);
-    border-radius: 14px; touch-action: none; margin: 10px 0; overflow: hidden;
+    border-radius: 14px; touch-action: none; margin: 4px 0 10px; overflow: hidden;
   }
   #pad::before, #pad::after { content: ""; position: absolute; background: var(--line); }
   #pad::before { left: 50%; top: 0; bottom: 0; width: 1px; }
   #pad::after { top: 50%; left: 0; right: 0; height: 1px; }
   #knob {
-    position: absolute; width: 34px; height: 34px; border-radius: 50%; background: var(--accent);
+    position: absolute; width: 32px; height: 32px; border-radius: 50%; background: var(--accent);
     left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 12px rgba(79,179,255,.6);
   }
-  .switch { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
-  .switch input { width: 46px; height: 26px; accent-color: var(--accent); }
+
+  .dd { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; background: #141b2b; }
+  .dd .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .dd .val { font-size: 22px; font-weight: 800; color: var(--accent2); font-variant-numeric: tabular-nums; }
+
   nav {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 5; display: grid; grid-template-columns: repeat(5, 1fr);
-    background: rgba(15,20,32,.96); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+    background: rgba(15,20,32,.97); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
   }
-  nav button { border: none; background: none; border-radius: 0; font-size: 11px; color: var(--muted); padding: 8px 0; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 60px; }
+  nav button { border: none; background: none; border-radius: 0; font-size: 11px; color: var(--muted); padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 58px; }
   nav button span { font-size: 20px; }
   nav button.active { color: var(--accent); }
   .page { display: none; } .page.active { display: block; }
-  #log { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-  #warn { display: none; background: #3a2a10; border: 1px solid var(--warn); color: var(--warn); border-radius: 12px; padding: 12px; font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+  #log { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); max-height: 160px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+  #toast {
+    position: fixed; left: 16px; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 9;
+    max-width: 528px; margin: 0 auto; background: #2a3550; border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; font-size: 14px; display: none; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  #warn { display: none; background: #3a2a10; border: 1px solid var(--warn); color: var(--warn); border-radius: 12px; padding: 12px; font-size: 13px; margin-bottom: 14px; line-height: 1.6; }
   .counter { text-align: right; font-size: 12px; color: var(--muted); margin-top: 4px; }
 </style>
 </head>
 <body>
 <header>
-  <div class="dot" id="dot"></div>
-  <h1 id="title">OLED 눈 리모컨</h1>
-  <button id="connectBtn" class="primary" style="min-height:38px;padding:8px 14px">연결</button>
+  <div class="bar">
+    <div class="dot" id="dot"></div>
+    <h1 id="title">OLED 로봇 리모컨</h1>
+    <button id="connectBtn" class="primary" style="min-height:36px;padding:6px 14px">연결</button>
+  </div>
+  <div class="modes" id="modes"><span class="lbl">OLED 화면</span></div>
 </header>
 
 <main>
   <div id="warn"></div>
 
-  <!-- 눈 -->
-  <section class="page active" id="p-eyes">
+  <!-- 얼굴 -->
+  <section class="page active" id="p-face">
     <div class="card">
-      <h2>👀 표정</h2>
-      <div class="grid g4" id="moods"></div>
+      <h2>🤖 얼굴 미리보기 <small>실제 OLED 화면과 같은 모양</small></h2>
+      <div class="oled-wrap"><img class="oled" id="facePreview" alt="얼굴 미리보기"></div>
+      <h2 style="margin-top:4px">눈 모양</h2>
+      <div class="grid g4" id="styles"></div>
+    </div>
+    <div class="card">
+      <h2>😊 표정</h2>
+      <div class="grid g3" id="moods"></div>
+    </div>
+    <div class="card">
+      <h2>🎨 꾸미기</h2>
+      <label class="switch"><span>입 보이기</span><input type="checkbox" id="mouthChk" checked></label>
+      <label class="switch"><span>볼터치</span><input type="checkbox" id="blushChk" checked></label>
+      <label class="switch"><span>자동 두리번 · 자동 깜빡임</span><input type="checkbox" id="autoChk" checked></label>
     </div>
     <div class="card">
       <h2>🕹️ 눈동자 움직이기 <small>패드를 드래그</small></h2>
       <div id="pad"><div id="knob"></div></div>
       <div class="grid g2">
         <button id="blinkBtn">😑 깜빡!</button>
-        <button id="centerBtn">🎯 가운데</button>
-      </div>
-      <div class="switch" style="margin-top:10px">
-        <label for="autoChk">자동 두리번 · 자동 깜빡임</label>
-        <input type="checkbox" id="autoChk" checked>
+        <button id="centerBtn">🎯 가운데 보기</button>
       </div>
     </div>
   </section>
 
-  <!-- 시계 -->
-  <section class="page" id="p-clock">
+  <!-- 디데이 -->
+  <section class="page" id="p-dday">
     <div class="card">
-      <h2>🕒 시계</h2>
-      <div class="big" id="phoneClock">--:--:--</div>
-      <div class="grid g2">
-        <button class="primary" id="showClockBtn">OLED에 시계 표시</button>
-        <button id="syncBtn">⏱ 시간 동기화</button>
-      </div>
-      <div class="switch" style="margin-top:10px">
-        <label for="h24Chk">24시간제</label>
-        <input type="checkbox" id="h24Chk" checked>
-      </div>
-      <p class="muted">보드에는 시계용 배터리가 없어서, 앱이 연결될 때마다 스마트폰 시간을 자동으로 보내줘요.</p>
+      <h2>📅 디데이 <small>최대 3개 · 보드에 저장</small></h2>
+      <div id="ddList"></div>
+      <button class="primary" id="ddShowBtn" style="width:100%">OLED에 디데이 보기</button>
+      <p class="muted">여러 개를 저장하면 OLED에서 4초마다 번갈아 보여줘요. 제목은 한글 10자까지 깔끔하게 보여요.</p>
     </div>
   </section>
 
-  <!-- 타이머 -->
+  <!-- 타이머 · 스톱워치 -->
   <section class="page" id="p-timer">
     <div class="card">
       <h2>⏳ 타이머 <small id="timerState">대기</small></h2>
@@ -135,22 +164,15 @@
         <span style="flex:none">분</span>
         <input type="number" id="tSec" min="0" max="59" value="0" inputmode="numeric" aria-label="초">
         <span style="flex:none">초</span>
-        <button id="tSetBtn" style="flex:none;padding:12px 16px">설정</button>
+        <button id="tSetBtn" style="flex:none;padding:10px 16px">설정</button>
       </div>
       <div class="grid g3" style="margin-top:10px">
         <button class="primary" id="tStart">▶ 시작</button>
         <button id="tPause">⏸ 멈춤</button>
         <button class="danger" id="tReset">↺ 리셋</button>
       </div>
-      <div class="switch" style="margin-top:10px">
-        <label for="vibChk">끝나면 폰 진동/알림음</label>
-        <input type="checkbox" id="vibChk" checked>
-      </div>
+      <label class="switch" style="margin-top:6px"><span>끝나면 폰 진동 · 알림음</span><input type="checkbox" id="vibChk" checked></label>
     </div>
-  </section>
-
-  <!-- 스톱워치 -->
-  <section class="page" id="p-sw">
     <div class="card">
       <h2>⏱️ 스톱워치</h2>
       <div class="big" id="swView">00:00.00</div>
@@ -162,24 +184,48 @@
     </div>
   </section>
 
-  <!-- 메시지 & 설정 -->
-  <section class="page" id="p-more">
+  <!-- 메시지 -->
+  <section class="page" id="p-msg">
     <div class="card">
       <h2>💬 메시지 띄우기</h2>
-      <input type="text" id="msg" placeholder="예) 항해사가 될 거야! | 화이팅" maxlength="80">
+      <input type="text" id="msg" placeholder="예) 항해사가 될 거야!" maxlength="60">
       <div class="counter" id="msgCount">0 / 150 bytes</div>
       <div class="grid g3" style="margin-top:8px" id="quickMsgs"></div>
       <button class="primary" id="msgBtn" style="width:100%;margin-top:8px">OLED에 보내기</button>
-      <p class="muted">‘|’ 를 넣으면 줄이 바뀌어요. 한 화면에 한글 8자 × 4줄, 길면 자동으로 페이지가 넘어가요.</p>
+      <p class="muted">‘|’ 를 넣으면 줄이 바뀌어요. 한 화면에 한글 8자 × 4줄, 길면 자동으로 쪽이 넘어가요.</p>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section class="page" id="p-set">
+    <div class="card">
+      <h2>🔁 자동 순환 <small>여러 화면을 번갈아 보여주기</small></h2>
+      <div class="grid g2" id="cycleModes"></div>
+      <div class="row" style="margin-top:10px">
+        <span style="flex:none" class="muted">바꾸는 간격</span>
+        <select id="cycleSec">
+          <option value="5">5초</option><option value="10" selected>10초</option><option value="20">20초</option>
+          <option value="30">30초</option><option value="60">1분</option><option value="300">5분</option>
+        </select>
+      </div>
+      <div class="grid g2" style="margin-top:10px">
+        <button class="primary" id="cycleOnBtn">순환 시작</button>
+        <button id="cycleOffBtn">순환 끄기</button>
+      </div>
     </div>
     <div class="card">
-      <h2>⚙️ 화면 설정</h2>
+      <h2>🕒 시계</h2>
+      <div class="big" id="phoneClock" style="font-size:34px">--:--:--</div>
+      <label class="switch"><span>24시간제</span><input type="checkbox" id="h24Chk" checked></label>
+      <button id="syncBtn" style="width:100%">⏱ 폰 시간을 보드에 맞추기</button>
+      <p class="muted">보드에는 시계 배터리가 없어서, 앱을 연결할 때마다 자동으로 시간을 맞춰요.</p>
+    </div>
+    <div class="card">
+      <h2>⚙️ 화면</h2>
       <label class="muted" for="bright">밝기</label>
       <input type="range" id="bright" min="0" max="255" value="200">
-      <div class="switch">
-        <label for="flipChk">화면 180° 뒤집기</label>
-        <input type="checkbox" id="flipChk">
-      </div>
+      <label class="switch"><span>화면 180° 뒤집기</span><input type="checkbox" id="flipChk"></label>
+      <p class="muted">설정은 보드에 저장돼서 전원을 껐다 켜도 유지돼요.</p>
     </div>
     <div class="card">
       <h2>🧾 통신 기록</h2>
@@ -188,56 +234,80 @@
   </section>
 </main>
 
+<div id="toast"></div>
+
 <nav id="nav">
-  <button data-p="p-eyes" class="active"><span>👀</span>눈</button>
-  <button data-p="p-clock"><span>🕒</span>시계</button>
+  <button data-p="p-face" class="active"><span>🤖</span>얼굴</button>
+  <button data-p="p-dday"><span>📅</span>디데이</button>
   <button data-p="p-timer"><span>⏳</span>타이머</button>
-  <button data-p="p-sw"><span>⏱️</span>스톱워치</button>
-  <button data-p="p-more"><span>💬</span>메시지</button>
+  <button data-p="p-msg"><span>💬</span>메시지</button>
+  <button data-p="p-set"><span>⚙️</span>설정</button>
 </nav>
 
+<script src="faces.js"></script>
 <script>
 "use strict";
 const SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 const RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // 폰 → 보드
 const TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // 보드 → 폰
-const MAX_BYTES = 150;
+const MAX_BYTES = 150, CHUNK = 20;
 const enc = new TextEncoder(), dec = new TextDecoder();
 const $ = (id) => document.getElementById(id);
+const fmt2 = (n) => String(Math.floor(n)).padStart(2, "0");
+
+const MODES = [   // 보드 모드 이름, 표시 이름, 비트 번호
+  ["EYES", "🤖 얼굴"], ["CLOCK", "🕒 시계"], ["DDAY", "📅 디데이"],
+  ["TIMER", "⏳ 타이머"], ["STOPWATCH", "⏱️ 스톱워치"], ["TEXT", "💬 메시지"],
+];
+const MOODS = [
+  ["NORMAL", "기본"], ["HAPPY", "행복"], ["SAD", "슬픔"], ["ANGRY", "화남"], ["SLEEPY", "졸림"],
+  ["SURPRISED", "놀람"], ["LOVE", "사랑"], ["WINK", "윙크"], ["LAUGH", "깔깔"], ["DIZZY", "어지러움"],
+];
+const STYLES = ["둥근 네모", "알약", "동그라미", "반짝 눈"];
 
 let device = null, rxChar = null;
-let queue = Promise.resolve();     // BLE 쓰기는 한 번에 하나씩만 가능 → 순서대로 처리
+let writeQueue = Promise.resolve();
 let pendingLook = null, lookBusy = false;
+let rxBytes = [];
 
-// 상태 (보드가 1초마다 보내는 값 + 폰에서 보간)
-const st = { mode: "EYES", timerSec: 300, timerRun: false, swMs: 0, swRun: false, at: Date.now() };
+const st = { mode: "EYES", timerSec: 300, timerRun: false, swMs: 0, swRun: false, cycle: false, at: Date.now() };
+const ui = { style: 0, mood: 0, cycleMask: 0b000111 };
 
 /* ---------------- 공통 ---------------- */
 function log(msg) {
   const el = $("log");
-  const t = new Date().toLocaleTimeString("ko-KR", { hour12: false });
-  el.textContent = `[${t}] ${msg}\n` + el.textContent.slice(0, 4000);
+  const d = new Date();
+  const t = `${fmt2(d.getHours())}:${fmt2(d.getMinutes())}:${fmt2(d.getSeconds())}`;
+  el.textContent = `[${t}] ${msg}\n` + el.textContent.slice(0, 5000);
 }
-
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg; el.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => (el.style.display = "none"), 2800);
+}
 function setConnected(on) {
   $("dot").classList.toggle("on", on);
   $("connectBtn").textContent = on ? "연결 끊기" : "연결";
-  $("title").textContent = on ? (device?.name || "연결됨") : "OLED 눈 리모컨";
+  $("title").textContent = on ? (device?.name || "연결됨") : "OLED 로봇 리모컨";
 }
 
+// 명령 한 줄을 20바이트씩 나눠 전송 (끝에 '\n')
 function send(cmd, { quiet = false } = {}) {
-  if (!rxChar) { if (!quiet) toast("먼저 [연결] 버튼을 눌러 보드와 연결하세요"); return Promise.resolve(); }
-  queue = queue.then(async () => {
+  if (!rxChar) { if (!quiet) toast("먼저 오른쪽 위 [연결]을 눌러 보드와 연결하세요"); return Promise.resolve(false); }
+  const bytes = enc.encode(cmd + "\n");
+  writeQueue = writeQueue.then(async () => {
     try {
-      await rxChar.writeValueWithResponse(enc.encode(cmd));
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        await rxChar.writeValueWithResponse(bytes.slice(i, i + CHUNK));
+      }
       if (!quiet) log("→ " + cmd);
-    } catch (e) { log("전송 실패: " + e.message); }
+      return true;
+    } catch (e) { log("전송 실패: " + e.message); return false; }
   });
-  return queue;
+  return writeQueue;
 }
 
-// 눈동자 이동은 자주 보내므로 최신 값만 전송
-function sendLook(x, y) {
+function sendLook(x, y) {   // 최신 값만 보냄
   pendingLook = `LOOK:${x},${y}`;
   if (lookBusy) return;
   lookBusy = true;
@@ -245,27 +315,22 @@ function sendLook(x, y) {
     while (pendingLook) {
       const c = pendingLook; pendingLook = null;
       await send(c, { quiet: true });
-      await new Promise(r => setTimeout(r, 60));
+      await new Promise(r => setTimeout(r, 50));
     }
     lookBusy = false;
   })();
 }
 
-function toast(msg) {
-  const w = $("warn");
-  w.textContent = msg; w.style.display = "block";
-  clearTimeout(toast.t); toast.t = setTimeout(() => (w.style.display = "none"), 3500);
+/* ---------------- 연결 ---------------- */
+function showNoBluetooth() {
+  $("warn").innerHTML = "⚠️ 이 브라우저는 <b>웹 블루투스</b>를 지원하지 않아요.<br>" +
+    "• 안드로이드: <b>Chrome</b>으로 열기<br>• 아이폰: App Store의 <b>Bluefy</b> 앱으로 열기<br>" +
+    "• 주소가 <b>https://</b> 로 시작해야 해요";
+  $("warn").style.display = "block";
 }
 
-/* ---------------- 연결 ---------------- */
 async function connect() {
-  if (!navigator.bluetooth) {
-    $("warn").innerHTML = "이 브라우저는 <b>웹 블루투스</b>를 지원하지 않아요.<br>" +
-      "• 안드로이드: <b>Chrome</b>으로 열어주세요.<br>• 아이폰: App Store의 <b>Bluefy</b> 브라우저로 열어주세요.<br>" +
-      "• 주소가 <b>https://</b> 로 시작해야 해요.";
-    $("warn").style.display = "block";
-    return;
-  }
+  if (!navigator.bluetooth) { showNoBluetooth(); return; }
   try {
     device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [SERVICE] }, { namePrefix: "ESP32" }],
@@ -278,30 +343,55 @@ async function connect() {
     rxChar = await svc.getCharacteristic(RX_UUID);
     const tx = await svc.getCharacteristic(TX_UUID);
     await tx.startNotifications();
-    tx.addEventListener("characteristicvaluechanged", (e) => onNotify(dec.decode(e.target.value)));
+    tx.addEventListener("characteristicvaluechanged", onNotifyChunk);
     setConnected(true);
     log("연결 완료");
-    syncTime();
-    send("H24:" + ($("h24Chk").checked ? 1 : 0), { quiet: true });
+    toast("연결됐어요!");
+    syncTime(true);
+    send("GET", { quiet: true });   // 보드에 저장된 설정 불러오기
   } catch (e) {
     log("연결 실패: " + e.message);
     if (e.name !== "NotFoundError") toast("연결 실패: " + e.message);
   }
 }
+function onDisconnected() { rxChar = null; setConnected(false); log("연결 끊김"); }
+$("connectBtn").onclick = () => (device?.gatt?.connected ? device.gatt.disconnect() : connect());
 
-function onDisconnected() {
-  rxChar = null; setConnected(false); log("연결 끊김");
+// 보드가 보낸 조각을 모아서 줄 단위로 처리
+function onNotifyChunk(e) {
+  const v = new Uint8Array(e.target.value.buffer);
+  for (const b of v) {
+    if (b === 10) { const line = dec.decode(new Uint8Array(rxBytes)); rxBytes = []; if (line) onLine(line); }
+    else rxBytes.push(b);
+  }
+  if (rxBytes.length > 1000) rxBytes = [];
 }
 
-$("connectBtn").onclick = () => {
-  if (device?.gatt?.connected) device.gatt.disconnect();
-  else connect();
-};
-
-function onNotify(s) {
+function onLine(s) {
   if (s.startsWith("S:")) {
-    const [mode, tSec, tRun, swMs, swRun] = s.slice(2).split(",");
-    Object.assign(st, { mode, timerSec: +tSec, timerRun: tRun === "1", swMs: +swMs, swRun: swRun === "1", at: Date.now() });
+    const [mode, tSec, tRun, swMs, swRun, cyc] = s.slice(2).split(",");
+    Object.assign(st, { mode, timerSec: +tSec, timerRun: tRun === "1", swMs: +swMs, swRun: swRun === "1", cycle: cyc === "1", at: Date.now() });
+    renderModes();
+  } else if (s.startsWith("CFG:")) {
+    const c = s.slice(4).split(",").map(Number);
+    ui.style = c[0]; ui.mood = c[1];
+    $("mouthChk").checked = !!c[2]; $("blushChk").checked = !!c[3]; $("autoChk").checked = !!c[4];
+    $("bright").value = c[5]; $("flipChk").checked = !!c[6]; $("h24Chk").checked = !!c[7];
+    st.cycle = !!c[8]; $("cycleSec").value = String(c[9]);
+    if (![...$("cycleSec").options].some(o => o.value === String(c[9]))) $("cycleSec").value = "10";
+    ui.cycleMask = c[10];
+    renderFace(); renderCycle(); renderModes();
+    log("보드 설정을 불러왔어요");
+  } else if (s.startsWith("DD:")) {
+    const rest = s.slice(3);
+    const i = +rest[0];
+    const body = rest.slice(2);
+    const comma = body.indexOf(",");
+    if (comma > 0) { dd[i] = { date: body.slice(0, comma), title: body.slice(comma + 1) }; }
+    else dd[i] = { date: "", title: "" };
+    renderDday();
+  } else if (s.startsWith("MSG:")) {
+    $("msg").value = s.slice(4); $("msg").oninput();
   } else if (s === "EV:TIMER_DONE") {
     log("⏰ 타이머 종료");
     st.timerRun = false; st.timerSec = 0;
@@ -324,35 +414,70 @@ function alarm() {
   toast("⏰ 타이머가 끝났어요!");
 }
 
+/* ---------------- 위쪽 'OLED 화면' 선택 ---------------- */
+MODES.forEach(([key, name]) => {
+  const b = document.createElement("button");
+  b.className = "chip"; b.dataset.mode = key; b.textContent = name;
+  b.onclick = () => { send("MODE:" + key); st.mode = key; st.cycle = false; renderModes(); };
+  $("modes").appendChild(b);
+});
+{
+  const b = document.createElement("button");
+  b.className = "chip"; b.dataset.mode = "CYCLE"; b.textContent = "🔁 자동 순환";
+  b.onclick = startCycle;
+  $("modes").appendChild(b);
+}
+function renderModes() {
+  document.querySelectorAll("#modes .chip").forEach((c) => {
+    const m = c.dataset.mode;
+    c.classList.toggle("on", m === "CYCLE" ? st.cycle : m === st.mode && !st.cycle);
+    c.classList.toggle("cyc", st.cycle && m === st.mode);
+  });
+}
+
 /* ---------------- 탭 ---------------- */
 $("nav").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   document.querySelectorAll("#nav button").forEach(x => x.classList.toggle("active", x === b));
   document.querySelectorAll(".page").forEach(p => p.classList.toggle("active", p.id === b.dataset.p));
-  // 탭을 바꾸면 OLED 화면도 해당 모드로 전환
-  const map = { "p-eyes": "EYES", "p-clock": "CLOCK", "p-timer": "TIMER", "p-sw": "STOPWATCH" };
-  if (map[b.dataset.p]) send("MODE:" + map[b.dataset.p], { quiet: true });
   window.scrollTo(0, 0);
 });
 
-/* ---------------- 눈 ---------------- */
-const MOODS = [
-  ["NORMAL", "😐", "기본"], ["HAPPY", "😊", "행복"], ["SAD", "😢", "슬픔"], ["ANGRY", "😠", "화남"],
-  ["SLEEPY", "😴", "졸림"], ["SURPRISED", "😲", "놀람"], ["LOVE", "😍", "사랑"], ["WINK", "😉", "윙크"],
-];
-MOODS.forEach(([k, e, n], i) => {
+/* ---------------- 얼굴 ---------------- */
+const P = window.FACE_PREVIEWS || [];
+STYLES.forEach((name, i) => {
   const b = document.createElement("button");
-  b.className = "mood" + (i === 0 ? " sel" : "");
-  b.innerHTML = `<span>${e}</span>${n}`;
-  b.onclick = () => {
-    document.querySelectorAll(".mood").forEach(x => x.classList.toggle("sel", x === b));
-    send("EYE:" + k);
-  };
+  b.className = "thumb"; b.dataset.i = i;
+  b.innerHTML = `<img alt=""><span>${name}</span>`;
+  b.onclick = () => { ui.style = i; renderFace(); send("STYLE:" + i); };
+  $("styles").appendChild(b);
+});
+MOODS.forEach(([key, name], i) => {
+  const b = document.createElement("button");
+  b.className = "thumb"; b.dataset.i = i;
+  b.innerHTML = `<img alt=""><span>${name}</span>`;
+  b.onclick = () => { ui.mood = i; renderFace(); send("EYE:" + key); };
   $("moods").appendChild(b);
 });
+function renderFace() {
+  document.querySelectorAll("#styles .thumb").forEach((b) => {
+    const i = +b.dataset.i;
+    b.classList.toggle("sel", i === ui.style);
+    if (P[i]) b.querySelector("img").src = P[i][0];
+  });
+  document.querySelectorAll("#moods .thumb").forEach((b) => {
+    const i = +b.dataset.i;
+    b.classList.toggle("sel", i === ui.mood);
+    if (P[ui.style]) b.querySelector("img").src = P[ui.style][i];
+  });
+  if (P[ui.style]) $("facePreview").src = P[ui.style][ui.mood];
+}
+renderFace();
 
-$("blinkBtn").onclick = () => send("BLINK");
+$("mouthChk").onchange = (e) => send("MOUTH:" + (e.target.checked ? 1 : 0));
+$("blushChk").onchange = (e) => send("BLUSH:" + (e.target.checked ? 1 : 0));
 $("autoChk").onchange = (e) => send("AUTO:" + (e.target.checked ? 1 : 0));
+$("blinkBtn").onclick = () => send("BLINK");
 
 const pad = $("pad"), knob = $("knob");
 function moveKnob(px, py) { knob.style.left = px + "%"; knob.style.top = py + "%"; }
@@ -367,18 +492,48 @@ pad.addEventListener("pointerdown", (e) => { pad.setPointerCapture(e.pointerId);
 pad.addEventListener("pointermove", (e) => { if (pad.hasPointerCapture(e.pointerId)) padHandler(e); });
 $("centerBtn").onclick = () => { moveKnob(50, 50); sendLook(0, 0); };
 
-/* ---------------- 시계 ---------------- */
-function syncTime() {
-  const epoch = Math.floor(Date.now() / 1000);
-  const offsetMin = -new Date().getTimezoneOffset(); // 한국 = 540
-  return send(`TIME:${epoch},${offsetMin}`);
+/* ---------------- 디데이 ---------------- */
+const dd = [{ date: "", title: "" }, { date: "", title: "" }, { date: "", title: "" }];
+function ddValue(date) {
+  if (!date) return "";
+  const [y, m, d] = date.split("-").map(Number);
+  const now = new Date();
+  const diff = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+  return diff > 0 ? `D-${diff}` : diff === 0 ? "D-DAY" : `D+${-diff}`;
 }
-$("syncBtn").onclick = () => { syncTime(); toast("스마트폰 시간을 보드에 보냈어요"); };
-$("showClockBtn").onclick = () => { syncTime(); send("MODE:CLOCK"); };
-$("h24Chk").onchange = (e) => send("H24:" + (e.target.checked ? 1 : 0));
+function renderDday() {
+  const box = $("ddList");
+  box.innerHTML = "";
+  dd.forEach((item, i) => {
+    const el = document.createElement("div");
+    el.className = "dd";
+    el.innerHTML = `
+      <div class="head"><b>${i + 1}번 디데이</b><span class="val">${ddValue(item.date) || "—"}</span></div>
+      <input type="text" placeholder="제목 (예: 수능, 해양대 면접)" maxlength="10" value="">
+      <div class="row" style="margin-top:8px">
+        <input type="date" value="${item.date}">
+        <button class="primary" style="flex:none">저장</button>
+        <button class="danger" style="flex:none">삭제</button>
+      </div>`;
+    const [title, date] = el.querySelectorAll("input");
+    title.value = item.title;
+    const [save, del] = el.querySelectorAll("button");
+    date.onchange = () => { el.querySelector(".val").textContent = ddValue(date.value) || "—"; };
+    save.onclick = async () => {
+      if (!date.value) { toast("날짜를 골라 주세요"); return; }
+      const t = title.value.trim() || "디데이";
+      dd[i] = { date: date.value, title: t };
+      if (await send(`DDAY:${i},${date.value},${t}`)) toast(`${i + 1}번 디데이를 저장했어요`);
+      renderDday();
+    };
+    del.onclick = () => { dd[i] = { date: "", title: "" }; send(`DDAY:DEL,${i}`); renderDday(); };
+    box.appendChild(el);
+  });
+}
+renderDday();
+$("ddShowBtn").onclick = () => { send("MODE:DDAY"); st.mode = "DDAY"; st.cycle = false; renderModes(); };
 
-/* ---------------- 타이머 ---------------- */
-const fmt2 = (n) => String(Math.floor(n)).padStart(2, "0");
+/* ---------------- 타이머 · 스톱워치 ---------------- */
 [1, 3, 5, 10, 15, 25, 30, 50].forEach((m) => {
   const b = document.createElement("button");
   b.textContent = m + "분";
@@ -394,13 +549,11 @@ $("tSetBtn").onclick = () => setTimer((+$("tMin").value || 0) * 60 + (+$("tSec")
 $("tStart").onclick = () => { send("TIMER:START"); st.timerRun = true; st.at = Date.now(); };
 $("tPause").onclick = () => send("TIMER:PAUSE");
 $("tReset").onclick = () => send("TIMER:RESET");
-
-/* ---------------- 스톱워치 ---------------- */
 $("swStart").onclick = () => send("SW:START");
 $("swStop").onclick = () => send("SW:STOP");
 $("swReset").onclick = () => send("SW:RESET");
 
-/* ---------------- 메시지 & 설정 ---------------- */
+/* ---------------- 메시지 ---------------- */
 const msgEl = $("msg");
 msgEl.oninput = () => {
   const n = enc.encode(msgEl.value).length;
@@ -408,11 +561,12 @@ msgEl.oninput = () => {
   $("msgCount").style.color = n > MAX_BYTES ? "var(--danger)" : "";
 };
 function sendMsg(text) {
+  if (!text.trim()) { toast("메시지를 입력해 주세요"); return; }
   if (enc.encode(text).length > MAX_BYTES) { toast("메시지가 너무 길어요"); return; }
   send("TEXT:" + text);
 }
 $("msgBtn").onclick = () => sendMsg(msgEl.value);
-["안녕하세요!", "공부 중|조용히", "항해사가|될 거야!", "지구를|지켜요!", "화이팅!", "잠깐 쉬는 중"].forEach((m) => {
+["안녕하세요!", "공부 중|조용히", "항해사가|될 거야!", "지구를|지켜요!", "화이팅!", "잠깐|쉬는 중"].forEach((m) => {
   const b = document.createElement("button");
   b.textContent = m.replace(/\|/g, " ");
   b.style.fontSize = "13px";
@@ -420,6 +574,36 @@ $("msgBtn").onclick = () => sendMsg(msgEl.value);
   $("quickMsgs").appendChild(b);
 });
 
+/* ---------------- 설정: 자동 순환 ---------------- */
+MODES.forEach(([key, name], bit) => {
+  const l = document.createElement("label");
+  l.className = "switch"; l.style.cssText = "background:#141b2b;border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:13px";
+  l.innerHTML = `<span>${name}</span><input type="checkbox" data-bit="${bit}">`;
+  l.querySelector("input").onchange = (e) => {
+    ui.cycleMask = e.target.checked ? ui.cycleMask | (1 << bit) : ui.cycleMask & ~(1 << bit);
+  };
+  $("cycleModes").appendChild(l);
+});
+function renderCycle() {
+  document.querySelectorAll("#cycleModes input").forEach((c) => (c.checked = !!(ui.cycleMask & (1 << +c.dataset.bit))));
+}
+renderCycle();
+async function startCycle() {
+  if (!ui.cycleMask) { toast("순환할 화면을 하나 이상 골라 주세요 (설정 탭)"); return; }
+  await send(`CYCLE:${$("cycleSec").value},${ui.cycleMask}`);
+  if (await send("MODE:CYCLE")) { st.cycle = true; renderModes(); toast("자동 순환을 시작했어요"); }
+}
+$("cycleOnBtn").onclick = startCycle;
+$("cycleOffBtn").onclick = () => { send("MODE:" + st.mode); st.cycle = false; renderModes(); };
+
+/* ---------------- 설정: 시계 · 화면 ---------------- */
+function syncTime(quiet) {
+  const epoch = Math.floor(Date.now() / 1000);
+  const offsetMin = -new Date().getTimezoneOffset(); // 한국 = 540
+  return send(`TIME:${epoch},${offsetMin}`, { quiet });
+}
+$("syncBtn").onclick = async () => { if (await syncTime()) toast("폰 시간을 보드에 맞췄어요"); };
+$("h24Chk").onchange = (e) => send("H24:" + (e.target.checked ? 1 : 0));
 let brightT;
 $("bright").oninput = (e) => {
   clearTimeout(brightT);
@@ -428,26 +612,22 @@ $("bright").oninput = (e) => {
 $("flipChk").onchange = (e) => send("FLIP:" + (e.target.checked ? 1 : 0));
 
 /* ---------------- 화면 갱신 ---------------- */
-function render() {
-  const now = new Date();
-  $("phoneClock").textContent = now.toLocaleTimeString("ko-KR", { hour12: !$("h24Chk").checked });
-
+function tick() {
+  const d = new Date();
+  let h = d.getHours(), ap = "";
+  if (!$("h24Chk").checked) { ap = h < 12 ? "오전 " : "오후 "; h = h % 12 || 12; }
+  $("phoneClock").textContent = `${ap}${fmt2(h)}:${fmt2(d.getMinutes())}:${fmt2(d.getSeconds())}`;
   const dt = Date.now() - st.at;
-  const tLeft = st.timerRun ? Math.max(0, st.timerSec - dt / 1000) : st.timerSec;
-  const ts = Math.ceil(tLeft);
+  const ts = Math.ceil(st.timerRun ? Math.max(0, st.timerSec - dt / 1000) : st.timerSec);
   $("timerView").textContent = `${fmt2(ts / 60)}:${fmt2(ts % 60)}`;
   $("timerState").textContent = st.timerRun ? "진행 중" : (st.timerSec === 0 ? "종료" : "대기");
-
   const sw = st.swRun ? st.swMs + dt : st.swMs;
   $("swView").textContent = `${fmt2(sw / 60000 % 100)}:${fmt2(sw / 1000 % 60)}.${fmt2(sw / 10 % 100)}`;
-  requestAnimationFrame(render);
+  requestAnimationFrame(tick);
 }
-render();
-
-if (!navigator.bluetooth) {
-  $("warn").innerHTML = "⚠️ 이 브라우저는 웹 블루투스를 지원하지 않아요. 안드로이드는 <b>Chrome</b>, 아이폰은 <b>Bluefy</b> 앱으로 열어주세요.";
-  $("warn").style.display = "block";
-}
+tick();
+renderModes();
+if (!navigator.bluetooth) showNoBluetooth();
 </script>
 </body>
 </html>
