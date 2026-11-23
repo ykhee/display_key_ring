@@ -52,10 +52,11 @@
   .g4 { grid-template-columns: repeat(4, 1fr); }
   .row { display: flex; gap: 8px; align-items: center; }
   .row > * { flex: 1; min-width: 0; }
-  input[type=text], input[type=number], input[type=date], select {
+  input[type=text], input[type=number], input[type=date], select, textarea {
     width: 100%; font: inherit; color: var(--text); background: #0f1626; border: 1px solid var(--line);
     border-radius: 12px; padding: 10px 12px; min-height: 44px; color-scheme: dark;
   }
+  textarea { resize: vertical; line-height: 1.5; display: block; }
   input[type=range] { width: 100%; accent-color: var(--accent); }
   .switch { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; gap: 12px; }
   .switch input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
@@ -184,8 +185,14 @@
     </div>
   </section>
 
-  <!-- 메시지 -->
+  <!-- 메모 · 메시지 -->
   <section class="page" id="p-msg">
+    <div class="card">
+      <h2>📝 메모 <small>최대 5개 · 보드에 저장</small></h2>
+      <div id="memoList"></div>
+      <button class="primary" id="memoShowBtn" style="width:100%">OLED에 메모 보기</button>
+      <p class="muted">메모는 OLED에서 4초마다 넘어가요. 긴 메모는 여러 쪽으로 나뉘어 보여요. (한글 약 30자까지)</p>
+    </div>
     <div class="card">
       <h2>💬 메시지 띄우기</h2>
       <input type="text" id="msg" placeholder="예) 항해사가 될 거야!" maxlength="60">
@@ -240,7 +247,7 @@
   <button data-p="p-face" class="active"><span>🤖</span>얼굴</button>
   <button data-p="p-dday"><span>📅</span>디데이</button>
   <button data-p="p-timer"><span>⏳</span>타이머</button>
-  <button data-p="p-msg"><span>💬</span>메시지</button>
+  <button data-p="p-msg"><span>📝</span>메모</button>
   <button data-p="p-set"><span>⚙️</span>설정</button>
 </nav>
 
@@ -257,7 +264,7 @@ const fmt2 = (n) => String(Math.floor(n)).padStart(2, "0");
 
 const MODES = [   // 보드 모드 이름, 표시 이름, 비트 번호
   ["EYES", "🤖 얼굴"], ["CLOCK", "🕒 시계"], ["DDAY", "📅 디데이"],
-  ["TIMER", "⏳ 타이머"], ["STOPWATCH", "⏱️ 스톱워치"], ["TEXT", "💬 메시지"],
+  ["TIMER", "⏳ 타이머"], ["STOPWATCH", "⏱️ 스톱워치"], ["TEXT", "💬 메시지"], ["MEMO", "📝 메모"],
 ];
 const MOODS = [
   ["NORMAL", "기본"], ["HAPPY", "행복"], ["SAD", "슬픔"], ["ANGRY", "화남"], ["SLEEPY", "졸림"],
@@ -390,6 +397,9 @@ function onLine(s) {
     if (comma > 0) { dd[i] = { date: body.slice(0, comma), title: body.slice(comma + 1) }; }
     else dd[i] = { date: "", title: "" };
     renderDday();
+  } else if (s.startsWith("MO:")) {
+    const i = +s[3];
+    if (i >= 0 && i < memos.length) { memos[i] = s.slice(5); renderMemos(); }
   } else if (s.startsWith("MSG:")) {
     $("msg").value = s.slice(4); $("msg").oninput();
   } else if (s === "EV:TIMER_DONE") {
@@ -573,6 +583,46 @@ $("msgBtn").onclick = () => sendMsg(msgEl.value);
   b.onclick = () => { msgEl.value = m; msgEl.oninput(); sendMsg(m); };
   $("quickMsgs").appendChild(b);
 });
+
+/* ---------------- 메모 ---------------- */
+const MEMO_BYTES = 99;
+const memos = ["", "", "", "", ""];
+function renderMemos() {
+  const box = $("memoList");
+  box.innerHTML = "";
+  memos.forEach((text, i) => {
+    const el = document.createElement("div");
+    el.className = "dd";
+    el.innerHTML = `
+      <div class="head"><b>${i + 1}번 메모</b><span class="muted cnt"></span></div>
+      <textarea rows="2" placeholder="예) 동아리 발표 자료 USB 챙기기"></textarea>
+      <div class="grid g2" style="margin-top:8px">
+        <button class="primary">저장</button>
+        <button class="danger">삭제</button>
+      </div>`;
+    const ta = el.querySelector("textarea");
+    const cnt = el.querySelector(".cnt");
+    ta.value = text.replace(/\|/g, "\n");
+    const upd = () => {
+      const n = enc.encode(ta.value).length;
+      cnt.textContent = `${n} / ${MEMO_BYTES} bytes`;
+      cnt.style.color = n > MEMO_BYTES ? "var(--danger)" : "";
+    };
+    ta.oninput = upd; upd();
+    const [save, del] = el.querySelectorAll("button");
+    save.onclick = async () => {
+      const t = ta.value.replace(/\n/g, "|").trim();
+      if (!t) { toast("메모 내용을 입력해 주세요"); return; }
+      if (enc.encode(t).length > MEMO_BYTES) { toast("메모가 너무 길어요 (한글 약 30자까지)"); return; }
+      memos[i] = t;
+      if (await send(`MEMO:${i},${t}`)) toast(`${i + 1}번 메모를 저장했어요`);
+    };
+    del.onclick = () => { memos[i] = ""; ta.value = ""; upd(); send(`MEMO:DEL,${i}`); };
+    box.appendChild(el);
+  });
+}
+renderMemos();
+$("memoShowBtn").onclick = () => { send("MODE:MEMO"); st.mode = "MEMO"; st.cycle = false; renderModes(); };
 
 /* ---------------- 설정: 자동 순환 ---------------- */
 MODES.forEach(([key, name], bit) => {

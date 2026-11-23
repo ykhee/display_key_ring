@@ -2,22 +2,24 @@
  * ESP32-C3 + SH1106 1.3" OLED (128x64, I2C) 로봇 얼굴 + BLE 스마트폰 제어
  * -----------------------------------------------------------------------
  * 화면: 로봇 얼굴(눈 4종 × 표정 10종, 입·볼터치), 시계, 디데이(3개),
- *       타이머, 스톱워치, 메시지(한글), 자동 순환
+ *       타이머, 스톱워치, 메시지(한글), 메모(5개), 자동 순환
  * 설정은 보드에 저장되어 전원을 껐다 켜도 유지됩니다. (시간은 제외)
  *
  * 필요한 것
  *  - Arduino IDE 2.x + "esp32 by Espressif Systems" 보드 패키지
  *  - 라이브러리 "U8g2" (by oliver)
- *  - 같은 폴더의 face.h, screens.h  (스케치를 열면 탭으로 함께 열림)
+ *  - 이 파일과 같은 폴더(display_key_ring)에 face.h, screens.h 가 있어야 함
+ *    (Arduino 규칙: 폴더 이름 = .ino 파일 이름)
  *  - Tools → Partition Scheme → "Huge APP (3MB No OTA/1MB SPIFFS)"
  *    (한글 폰트 + 블루투스로 용량이 커서 기본 설정이면 "Sketch too big" 오류가 날 수 있음)
  *
  * 배선: OLED VCC→3V3, GND→GND, SDA→GPIO8, SCL→GPIO9
  *
  * 통신(Nordic UART Service UUID). 명령은 한 줄 텍스트, 끝에 '\n'
- *  TIME:<epoch>,<UTC오프셋분>  MODE:EYES|CLOCK|DDAY|TIMER|STOPWATCH|TEXT|CYCLE
+ *  TIME:<epoch>,<UTC오프셋분>  MODE:EYES|CLOCK|DDAY|TIMER|STOPWATCH|TEXT|MEMO|CYCLE
  *  EYE:<표정>  STYLE:<0~3>  MOUTH:0|1  BLUSH:0|1  LOOK:x,y  BLINK  AUTO:0|1
  *  DDAY:<0~2>,<YYYY-MM-DD>,<제목>   DDAY:DEL,<0~2>
+ *  MEMO:<0~4>,<내용>   MEMO:DEL,<0~4>
  *  TIMER:SET,<초>|START|PAUSE|RESET   SW:START|STOP|RESET   TEXT:<문자열>
  *  CYCLE:<초>,<모드비트마스크>   BRIGHT:<0~255>  FLIP:0|1  H24:0|1  GET
  */
@@ -52,8 +54,9 @@ U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /*reset=*/U8X8_PIN_NONE, /*cloc
 Preferences prefs;
 
 // ---------------------- 화면 모드 ----------------------
-enum Mode : uint8_t { M_EYES, M_CLOCK, M_DDAY, M_TIMER, M_STOPWATCH, M_TEXT, M_COUNT };
-const char* const MODE_NAMES[M_COUNT] = {"EYES", "CLOCK", "DDAY", "TIMER", "STOPWATCH", "TEXT"};
+enum Mode : uint8_t { M_EYES, M_CLOCK, M_DDAY, M_TIMER, M_STOPWATCH, M_TEXT, M_MEMO, M_COUNT };
+const char* const MODE_NAMES[M_COUNT] = {"EYES", "CLOCK", "DDAY", "TIMER", "STOPWATCH", "TEXT", "MEMO"};
+const uint8_t ALL_MODES_MASK = (1 << M_COUNT) - 1;
 
 Mode mode = M_EYES;
 Face face;
@@ -90,6 +93,13 @@ uint32_t swAccumMs = 0, swStartMs = 0;
 char message[160] = "안녕하세요!";
 int textPage = 0;
 uint32_t textPageAt = 0;
+
+// 메모 (최대 5개, 한글 약 30자씩)
+#define MEMO_COUNT 5
+#define MEMO_BYTES 100
+char memos[MEMO_COUNT][MEMO_BYTES];
+int memoPos = 0, memoPage = 0;    // 몇 번째 메모의 몇 쪽인지
+uint32_t memoAt = 0;
 
 // 저장 예약 (플래시 수명 보호: 변경 후 3초 뒤 한 번에 저장)
 bool saveDirty = false;
@@ -182,6 +192,10 @@ void saveSettings() {
   prefs.putUChar("cycMask", cycleMask);
   prefs.putUChar("mode", (mode == M_TIMER || mode == M_STOPWATCH) ? M_EYES : mode);
   prefs.putString("msg", message);
+  for (int i = 0; i < MEMO_COUNT; i++) {
+    char key[4] = {'m', (char)('0' + i), 0, 0};
+    prefs.putString(key, memos[i]);
+  }
   for (int i = 0; i < 3; i++) {
     char key[4] = {'d', 'd', (char)('0' + i), 0};
     char val[64] = "";
@@ -217,6 +231,11 @@ void loadSettings() {
   mode = (Mode)constrain(prefs.getUChar("mode", M_EYES), 0, M_COUNT - 1);
   String m = prefs.getString("msg", message);
   strlcpy(message, m.c_str(), sizeof(message));
+  for (int i = 0; i < MEMO_COUNT; i++) {
+    char key[4] = {'m', (char)('0' + i), 0, 0};
+    String v = prefs.getString(key, "");
+    strlcpy(memos[i], v.c_str(), MEMO_BYTES);
+  }
   for (int i = 0; i < 3; i++) {
     char key[4] = {'d', 'd', (char)('0' + i), 0};
     String v = prefs.getString(key, "");
@@ -238,6 +257,10 @@ void sendConfig() {
   }
   snprintf(buf, sizeof(buf), "MSG:%s", message);
   sendLine(buf);
+  for (int i = 0; i < MEMO_COUNT; i++) {
+    snprintf(buf, sizeof(buf), "MO:%d,%s", i, memos[i]);
+    sendLine(buf);
+  }
 }
 
 void sendStatus() {
@@ -253,6 +276,7 @@ void setMode(Mode m) {
   mode = m;
   if (m == M_TEXT) { textPage = 0; textPageAt = millis(); }
   if (m == M_DDAY) { ddayAt = millis(); }
+  if (m == M_MEMO) { memoAt = millis(); memoPage = 0; }
 }
 
 void nextCycleMode() {
@@ -321,6 +345,21 @@ void handleCommand(char* cmd) {
       }
     }
     markDirty();
+  } else if (key == "MEMO") {
+    if (strncasecmp(arg, "DEL,", 4) == 0) {
+      int i = atoi(arg + 4);
+      if (i >= 0 && i < MEMO_COUNT) memos[i][0] = 0;
+    } else {
+      int i = atoi(arg);
+      char* c = strchr(arg, ',');
+      if (i >= 0 && i < MEMO_COUNT && c) {
+        strlcpy(memos[i], c + 1, MEMO_BYTES);
+        memoPos = 0;
+        for (int k = 0; k < i; k++) if (memos[k][0]) memoPos++;   // 방금 저장한 메모부터 보여주기
+        cycleOn = false; setMode(M_MEMO);
+      }
+    }
+    markDirty();
   } else if (key == "TIMER") {
     String a(arg); a.toUpperCase();
     if (a.startsWith("SET")) {
@@ -351,7 +390,7 @@ void handleCommand(char* cmd) {
     int sec = 10, mask = cycleMask;
     if (sscanf(arg, "%d,%d", &sec, &mask) >= 1) {
       cycleSec = constrain(sec, 3, 3600);
-      if (mask & 0x3F) cycleMask = mask & 0x3F;
+      if (mask & ALL_MODES_MASK) cycleMask = mask & ALL_MODES_MASK;
       cycleAt = now;
     }
     markDirty();
@@ -394,6 +433,18 @@ void drawDdayMode(uint32_t now) {
   drawDdayScreen(u8g2, d.title, diff, d.y, d.m, d.d, ddayPos, n);
 }
 
+void drawMemoMode(uint32_t now) {
+  int idx[MEMO_COUNT], n = 0;
+  for (int i = 0; i < MEMO_COUNT; i++) if (memos[i][0]) idx[n++] = i;
+  if (n == 0) { drawNoMemo(u8g2); return; }
+  memoPos %= n;
+  int pages = drawMemoScreen(u8g2, memos[idx[memoPos]], memoPos, n, memoPage);
+  if (now - memoAt > 4000) {          // 4초마다 다음 쪽 → 다음 메모
+    memoAt = now;
+    if (++memoPage >= pages) { memoPage = 0; memoPos = (memoPos + 1) % n; }
+  }
+}
+
 void render(uint32_t now) {
   u8g2.clearBuffer();
   switch (mode) {
@@ -410,6 +461,7 @@ void render(uint32_t now) {
       break;
     case M_STOPWATCH: drawStopwatchScreen(u8g2, stopwatchMs(), swRunning, now); break;
     case M_TEXT: drawTextScreen(u8g2, message, textPage, textPageAt, now); break;
+    case M_MEMO: drawMemoMode(now); break;
     default: break;
   }
   u8g2.sendBuffer();

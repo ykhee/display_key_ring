@@ -208,3 +208,34 @@ static void drawTextScreen(U8G2& g, const char* msg, int& page, uint32_t& pageAt
   int top = (64 - shown * 16) / 2;
   for (int k = 0; k < shown; k++) drawCenterUTF8(g, top + 14 + k * 16, lines[start + k]);
 }
+
+// ---------------- 메모 (작은 글씨, 여러 쪽) ----------------
+// 쪽 수를 돌려줌. page 가 범위를 넘으면 0쪽을 그림.
+static int drawMemoScreen(U8G2& g, const char* text, int index, int count, int page) {
+  static char lines[TEXT_MAX_LINES][TEXT_LINE_BYTES];
+  char head[24];
+  snprintf(head, sizeof(head), "메모 %d/%d", index + 1, count);
+  g.setFont(FONT_KO_SMALL);
+  g.drawUTF8(0, 11, head);
+  g.drawHLine(0, 14, 128);
+
+  int n = wrapUTF8(g, text, lines, TEXT_MAX_LINES, 126);
+  const int PER = 3;   // 한 쪽에 3줄
+  int pages = n > 0 ? (n + PER - 1) / PER : 1;
+  if (page >= pages) page = 0;
+  if (pages > 1) {   // 오른쪽 위: 쪽 표시
+    char pg[12];
+    snprintf(pg, sizeof(pg), "%d/%d", page + 1, pages);
+    g.setFont(u8g2_font_5x8_tr);
+    g.drawStr(128 - g.getStrWidth(pg), 9, pg);
+    g.setFont(FONT_KO_SMALL);
+  }
+  for (int k = 0; k < PER && page * PER + k < n; k++) g.drawUTF8(1, 30 + k * 15, lines[page * PER + k]);
+  return pages;
+}
+
+static void drawNoMemo(U8G2& g) {
+  g.setFont(FONT_KO_SMALL);
+  drawCenterUTF8(g, 28, "메모가 없어요");
+  drawCenterUTF8(g, 46, "앱에서 추가해 주세요");
+}
